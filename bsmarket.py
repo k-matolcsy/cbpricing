@@ -106,9 +106,9 @@ class YieldCurve(object):
             m = 1 + self.__extrapolation(time, self.__stress_axis, self.__stress_increase)
             return max(self.__spot(time) * m, self.__spot(time) + 0.01)
         elif stress == "dec":
-            m = 1 + self.__extrapolation(time, self.__stress_axis, self.__stress_decrease)
+            m = 1 - self.__extrapolation(time, self.__stress_axis, self.__stress_decrease)
             if self.__spot(time) > 0:
-                return self.__spot(time) / m
+                return self.__spot(time) * m
             else:
                 return self.__spot(time)
 
@@ -315,17 +315,36 @@ class Option(object):
 
 
 class Bond(object):
-    def __init__(self, principal, maturity, coupon, freq, spread, yield_curve):
+    __a = np.array([
+        np.array([.0, .045, .07, .095, .12]),
+        np.array([.0, .055, .084, .109, .134]),
+        np.array([.0, .07, .105, .13, .155]),
+        np.array([.0, .125, .2, .25, .3]),
+        np.array([.0, .225, .35, .44, .465]),
+        np.array([.0, .375, .585, .61, .635])
+    ])
+    __b = np.array([
+        np.array([.009, .005, .005, .005, .005]),
+        np.array([.011, .006, .005, .005, .005]),
+        np.array([.014, .007, .005, .005, .005]),
+        np.array([.025, .015, .01, .01, .005]),
+        np.array([.045, .025, .018, .005, .005]),
+        np.array([.075, .042, .005, .005, .005]),
+    ])
+
+    def __init__(self, principal, maturity, coupon, freq, spread, yield_curve, stress=False, quality=0):
         self.principal = principal
         self.maturity = maturity
-        self.coupon = coupon
-        self.freq = freq
+        self.coupon = coupon    # coupon rate
+        self.freq = freq        # number of coupon payments in a year
         self.spread = spread
         self.yield_curve = yield_curve
 
-        self.price = (yield_curve.af(maturity, 0, freq) * coupon + yield_curve.df(maturity)) * principal
-        # self.price_c = yield_curve.af(maturity, 0, freq) * coupon * principal
-        # self.price_p = yield_curve.df(maturity) * principal
+        if stress:
+            self.price = (yield_curve.af(maturity, 0, freq) * coupon + yield_curve.df(maturity)) * principal \
+                         * (1 - self.__stress(quality, self.modified_duration()))
+        else:
+            self.price = (yield_curve.af(maturity, 0, freq) * coupon + yield_curve.df(maturity)) * principal
 
     @staticmethod
     def __my_range(end, start, step):
@@ -365,6 +384,25 @@ class Bond(object):
     def modified_duration(self):
         return self.duration() / (1 + self.ytm() / self.freq)
 
+    def __stress(self, quality, duration):
+        if duration <= 5:
+            x = duration
+            dur = 0
+        elif 5 < duration <= 10:
+            x = duration - 5
+            dur = 1
+        elif 10 < duration <= 15:
+            x = duration - 10
+            dur = 2
+        elif 15 < duration <= 20:
+            x = duration - 15
+            dur = 3
+        else:
+            x = duration - 20
+            dur = 4
+        return self.__a[quality][dur] + self.__b[quality][dur] * x
+
 
 if __name__ == '__main__':
-    pass
+    my_yield_curve = EuroArea("2017-09-01", stress="inc")
+    my_yield_curve.show()
