@@ -24,12 +24,14 @@ class YieldCurve(object):
         [.75, .75, .65, .56, .5, .46, .42, .39, .36, .33, .31, .3, .29, .28, .28, .27, .28, .28, .28, .29, .29, .2])
     __stress_axis = np.array([x for x in range(21)] + [90])
 
-    def __init__(self, date, stress=None):
+    def __init__(self, date, spread=.0, stress=None):
         """
         :param date: example "2017-09-05"
         """
-        assert type(date) is str
+        if spread != 0 and stress is not None:
+            raise Exception
         self.date = date
+        self.spread = spread
         self.stress = stress
         self.data = None
         self.data_raw = None  # [0.96, 1.02, 1.1, 1.24, 1.35, 1.46, 1.73, 1.99, 2.16, 2.51, 2.77]
@@ -100,29 +102,24 @@ class YieldCurve(object):
             return self.__extrapolation(time, axis, data) / 100
 
     def __spot_stress(self, time, stress):
-        if stress is None:
-            return self.__spot(time)
-        elif stress == "inc":
-            m = 1 + self.__extrapolation(time, YieldCurve.__stress_axis, YieldCurve.__stress_increase)
+        if stress == "inc":
+            m = 1 + self.__extrapolation(time, self.__stress_axis, self.__stress_increase)
             return max(self.__spot(time) * m, self.__spot(time) + 0.01)
         elif stress == "dec":
-            m = 1 + self.__extrapolation(time, YieldCurve.__stress_axis, YieldCurve.__stress_decrease)
+            m = 1 + self.__extrapolation(time, self.__stress_axis, self.__stress_decrease)
             if self.__spot(time) > 0:
                 return self.__spot(time) / m
             else:
                 return self.__spot(time)
 
+    def __spot_spread(self, time, spread):
+        return self.__spot(time) + spread
+
     def spot(self, time):
-        stress = self.stress
-        if stress == "inc":
-            m = 1 + self.__extrapolation(time, YieldCurve.__stress_axis, YieldCurve.__stress_increase)
-            return max(self.__spot(time) * m, self.__spot(time) + 0.01)
-        elif stress == "dec":
-            m = 1 + self.__extrapolation(time, YieldCurve.__stress_axis, YieldCurve.__stress_decrease)
-            if self.__spot(time) > 0:
-                return self.__spot(time) / m
-            else:
-                return self.__spot(time)
+        if self.stress is not None:
+            return self.__spot_stress(time, self.stress)
+        elif self.spread != 0:
+            return self.__spot_spread(time, self.spread)
         else:
             return self.__spot(time)
 
@@ -139,17 +136,24 @@ class YieldCurve(object):
                 while current > start_range:
                     yield current
                     current -= step_range
+
         s = 0
         for x in my_range(end, start, step):
             s += self.df(x, start)
         return s
 
     def show(self):
-        axis = np.array([0, 1/12, 1/4, 1/2, 3/4] + [x for x in range(1, 31)])
+        axis = np.array([0, 1 / 12, 1 / 4, 1 / 2, 3 / 4] + [x for x in range(1, 31)])
         curve = np.array([self.__spot(x) for x in axis])
-        curve_inc = np.array([self.__spot_stress(x, "inc") for x in axis])
-        curve_dec = np.array([self.__spot_stress(x, "dec") for x in axis])
-        plt.plot(axis, curve, axis, curve_inc, '--', axis, curve_dec, '--')
+        if self.stress is not None:
+            curve_inc = np.array([self.__spot_stress(x, "inc") for x in axis])
+            curve_dec = np.array([self.__spot_stress(x, "dec") for x in axis])
+            plt.plot(axis, curve, axis, curve_inc, '--', axis, curve_dec, '--')
+        elif self.spread != 0:
+            curve_spread = np.array([self.__spot_spread(x, self.spread) for x in axis])
+            plt.plot(axis, curve, '--', axis, curve_spread)
+        else:
+            plt.plot(axis, curve)
         plt.show()
         return None
 
@@ -172,10 +176,10 @@ class UsTreasury(YieldCurve):
 
 
 class EuroArea(YieldCurve):
-    def __init__(self, date, stress=None):
-        super().__init__(date, stress)
+    def __init__(self, date, spread=.0, stress=None):
+        super().__init__(date, spread, stress)
         self.data_raw = self.__parser(date)
-        self.axis = np.array([1/4, 1/2, 3/4] + [x for x in range(1, 31)])
+        self.axis = np.array([1 / 4, 1 / 2, 3 / 4] + [x for x in range(1, 31)])
         self.data = dict(zip(self.axis, self.data_raw))
 
     @staticmethod
@@ -196,9 +200,10 @@ class EuroArea(YieldCurve):
 class Stock(object):
     __stress_1 = .39
     __stress_2 = .49
+
     # symmetric_adj()
 
-    def __init__(self, ticker, start=str(dt.date.today()-rel_delta(years=1)), end=str(dt.date.today()), stress=None):
+    def __init__(self, ticker, start=str(dt.date.today() - rel_delta(years=1)), end=str(dt.date.today()), stress=None):
         self.ticker = ticker
         self.start = start
         self.end = end
@@ -226,14 +231,14 @@ class Stock(object):
 
     def vol_hist(self, days=252):
         n = min(days, len(self.data) - 1)
-        data = np.array([self.data.values[-x] / self.data.values[-x-1] - 1 for x in range(1, n+1)])
+        data = np.array([self.data.values[-x] / self.data.values[-x - 1] - 1 for x in range(1, n + 1)])
         std_deviation = np.std(data)
         return std_deviation * 252 ** 0.5
 
     @staticmethod
     def symmetric_adj():
         start = dt.date.today() - rel_delta(days=37)
-        end = dt.date.  today() - rel_delta(days=1)
+        end = dt.date.today() - rel_delta(days=1)
         tickers = np.array(
             ['^AEX', '^FCHI', '^GDAXI', '^FTAS', 'FTSEMIB.MI', '^IBEX', '^SSMI', '^GSPC', '^OMX', '^N225'])
         weights = np.array([.14, .14, .14, .14, .08, .08, .02, .08, .08, .02])
@@ -288,7 +293,7 @@ class Option(object):
         r = math.ln(1 + self.yield_curve.spot(maturity))
         df = self.yield_curve.df(maturity)
 
-        d1 = (math.ln(stock/strike) + (r + volatility ** 2 / 2) * maturity) / (volatility * maturity ** 0.5)
+        d1 = (math.ln(stock / strike) + (r + volatility ** 2 / 2) * maturity) / (volatility * maturity ** 0.5)
         d2 = d1 - volatility * maturity ** 0.5
         return stock * norm.cdf(d1) - strike * df * norm.cdf(d2) - self.price
 
@@ -362,6 +367,4 @@ class Bond(object):
 
 
 if __name__ == '__main__':
-    my_stock = Stock("AAPL", stress="type1")
-    print(my_stock.price)
-    print(my_stock.vol_hist())
+    pass
