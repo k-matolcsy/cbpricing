@@ -193,40 +193,10 @@ class EuroArea(YieldCurve):
         return data
 
 
-class SymmetricAdjIndex(object):
-    __start = dt.date.today()-rel_delta(days=37)
-    __end = dt.date.today()-rel_delta(days=1)
-    __tickers = np.array(['^AEX', '^FCHI', '^GDAXI', '^FTAS', 'FTSEMIB.MI', '^IBEX', '^SSMI', '^GSPC', '^OMX', '^N225'])
-    __weights = np.array([.14, .14, .14, .14, .08, .08, .02, .08, .08, .02])
-
-    index = []
-    for ticker in __tickers:
-        fail = True
-        attempt = 1
-        while fail:
-            try:
-                index.append(web.DataReader(ticker, 'yahoo', __start, __end)['Adj Close'])
-                fail = False
-            except Exception as e:
-                print(str(ticker), str(attempt), "attempt failed    ", str(e))
-                attempt += 1
-
-    ci = 0
-    for x, w in zip(index, __weights):
-        ci += w * x[-1]
-
-    ai = 0
-    for x, w in zip(index, __weights):
-        ai += w * np.mean(x)
-
-    symmetric_adj_raw = 0.5 * ((ci - ai) / ai - .08)
-    symmetric_adj = max(-.01, min(symmetric_adj_raw, .1))
-
-
 class Stock(object):
     __stress_1 = .39
     __stress_2 = .49
-    # symmetric_adj
+    # symmetric_adj()
 
     def __init__(self, ticker, start=str(dt.date.today()-rel_delta(years=1)), end=str(dt.date.today()), stress=None):
         self.ticker = ticker
@@ -245,9 +215,9 @@ class Stock(object):
         self.data = self.table['Adj Close']
 
         if stress == "type1":
-            self.price = float(self.data.values[-1]) * (1 - self.__stress_1 - SymmetricAdjIndex().symmetric_adj)
+            self.price = float(self.data.values[-1]) * (1 - self.__stress_1 - self.symmetric_adj())
         elif stress == "type2":
-            self.price = float(self.data.values[-1]) * (1 - self.__stress_2 - SymmetricAdjIndex().symmetric_adj)
+            self.price = float(self.data.values[-1]) * (1 - self.__stress_2 - self.symmetric_adj())
         else:
             self.price = float(self.data.values[-1])
 
@@ -259,6 +229,37 @@ class Stock(object):
         data = np.array([self.data.values[-x] / self.data.values[-x-1] - 1 for x in range(1, n+1)])
         std_deviation = np.std(data)
         return std_deviation * 252 ** 0.5
+
+    @staticmethod
+    def symmetric_adj():
+        start = dt.date.today() - rel_delta(days=37)
+        end = dt.date.  today() - rel_delta(days=1)
+        tickers = np.array(
+            ['^AEX', '^FCHI', '^GDAXI', '^FTAS', 'FTSEMIB.MI', '^IBEX', '^SSMI', '^GSPC', '^OMX', '^N225'])
+        weights = np.array([.14, .14, .14, .14, .08, .08, .02, .08, .08, .02])
+
+        index = []
+        for ticker in tickers:
+            fail = True
+            attempt = 1
+            while fail:
+                try:
+                    index.append(web.DataReader(ticker, 'yahoo', start, end)['Adj Close'])
+                    fail = False
+                except Exception as e:
+                    print(str(ticker), str(attempt), "attempt failed    ", str(e))
+                    attempt += 1
+
+        ci = 0
+        for x, w in zip(index, weights):
+            ci += w * x[-1]
+
+        ai = 0
+        for x, w in zip(index, weights):
+            ai += w * np.mean(x)
+
+        symmetric_adj_raw = 0.5 * ((ci - ai) / ai - .08)
+        return max(-.1, min(symmetric_adj_raw, .1))
 
 
 class Option(object):
@@ -361,4 +362,6 @@ class Bond(object):
 
 
 if __name__ == '__main__':
-    pass
+    my_stock = Stock("AAPL", stress="type1")
+    print(my_stock.price)
+    print(my_stock.vol_hist())
