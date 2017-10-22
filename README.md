@@ -1,1 +1,1 @@
-# cbpricing
+# cbpricing, the code for my thesis work called Convertible Bond Pricing under Solvency II
