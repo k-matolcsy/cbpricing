@@ -7,6 +7,7 @@ import pandas_datareader.data as web
 import matplotlib.pyplot as plt
 from matplotlib import style
 import quandl
+import ecb
 import re
 
 style.use("ggplot")
@@ -178,11 +179,15 @@ class UsTreasury(YieldCurve):
 class EuroArea(YieldCurve):
     def __init__(self, date, spread=.0, stress=None):
         super().__init__(date, spread, stress)
-        self.data_raw = self.__parser(date)
+        if date == str(dt.date.today()):
+            self.data_raw = ecb.Scraper().data()
+        else:
+            self.data_raw = self.__parser(date)
         self.axis = np.array([1 / 4, 1 / 2, 3 / 4] + [x for x in range(1, 31)])
         self.data = dict(zip(self.axis, self.data_raw))
 
     @staticmethod
+    #
     def __parser(date):
         checklist = ['3M', '6M', '9M'] + [str(i) + 'Y' for i in range(1, 31)]
         data = np.empty(len(checklist), dtype=float)
@@ -404,5 +409,5 @@ class Bond(object):
 
 
 if __name__ == '__main__':
-    my_yield_curve = EuroArea("2017-09-01", stress="inc")
-    my_yield_curve.show()
+    my_yield_curve = EuroArea("2017-10-25")
+    print(my_yield_curve.data_raw)
