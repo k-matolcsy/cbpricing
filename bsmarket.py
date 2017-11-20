@@ -337,12 +337,11 @@ class Bond(object):
         np.array([.075, .042, .005, .005, .005]),
     ])
 
-    def __init__(self, principal, maturity, coupon, freq, spread, yield_curve, stress=False, quality=0):
+    def __init__(self, principal, maturity, coupon, freq, yield_curve, stress=False, quality=0):
         self.principal = principal
         self.maturity = maturity
         self.coupon = coupon    # coupon rate
         self.freq = freq        # number of coupon payments in a year
-        self.spread = spread
         self.yield_curve = yield_curve
 
         if stress:
