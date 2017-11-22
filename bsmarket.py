@@ -25,11 +25,14 @@ class YieldCurve(object):
         [.75, .75, .65, .56, .5, .46, .42, .39, .36, .33, .31, .3, .29, .28, .28, .27, .28, .28, .28, .29, .29, .2])
     __stress_axis = np.array([x for x in range(21)] + [90])
 
-    def __init__(self, date, spread=.0, stress=None):
+    def __init__(self, date, stress=None, spread=.0):
         """
         :param date: example "2017-09-05"
         """
-        if spread != 0 and stress is not None:
+        result_1 = spread != .0
+        result_2 = stress is not None
+        boolean = spread != .0 and stress is not None
+        if boolean:
             raise Exception
         self.date = date
         self.spread = spread
@@ -94,13 +97,11 @@ class YieldCurve(object):
             return axis[-1]
 
     def __spot(self, time):
-        axis = self.axis
-        data = self.data_raw
-        k = self.__search_in(time, axis)
+        k = self.__search_in(time, self.axis)
         if isinstance(k, int):
-            return data[k] / 100
+            return self.data_raw[k] / 100
         else:
-            return self.__extrapolation(time, axis, data) / 100
+            return self.__extrapolation(time, self.axis, self.data_raw) / 100
 
     def __spot_stress(self, time, stress):
         if stress == "inc":
@@ -177,8 +178,8 @@ class UsTreasury(YieldCurve):
 
 
 class EuroArea(YieldCurve):
-    def __init__(self, date, spread=.0, stress=None):
-        super().__init__(date, spread, stress)
+    def __init__(self, date, stress=None, spread=.0):
+        super().__init__(date, stress, spread)
         if date == str(dt.date.today()):
             self.data_raw = ecb.Scraper().data()
         else:
@@ -187,7 +188,6 @@ class EuroArea(YieldCurve):
         self.data = dict(zip(self.axis, self.data_raw))
 
     @staticmethod
-    #
     def __parser(date):
         checklist = ['3M', '6M', '9M'] + [str(i) + 'Y' for i in range(1, 31)]
         data = np.empty(len(checklist), dtype=float)
@@ -408,5 +408,5 @@ class Bond(object):
 
 
 if __name__ == '__main__':
-    my_yield_curve = EuroArea("2017-10-25")
+    my_yield_curve = EuroArea("2017-11-22")
     print(my_yield_curve.data_raw)
