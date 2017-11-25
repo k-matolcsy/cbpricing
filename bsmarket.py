@@ -378,16 +378,42 @@ class Bond(object):
     ])
 
     def __init__(self, principal, maturity, coupon, freq, yield_curve, stress=False, quality=0):
+        # save inputs
         self.principal = principal
         self.maturity = maturity
         self.coupon = coupon    # coupon rate
         self.freq = freq        # number of coupon payments in a year
         self.yield_curve = yield_curve
-        # calculating the price
+
+        # private attribute for background calculation
         self.__price = (yield_curve.af(maturity, 0, freq) * coupon + yield_curve.df(maturity)) * principal
+
+        # attributes
+        self.price = self.__set_price(stress, quality)
+
+    def __stress(self, quality, duration):
+        if duration <= 5:
+            x = duration
+            dur = 0
+        elif 5 < duration <= 10:
+            x = duration - 5
+            dur = 1
+        elif 10 < duration <= 15:
+            x = duration - 10
+            dur = 2
+        elif 15 < duration <= 20:
+            x = duration - 15
+            dur = 3
+        else:
+            x = duration - 20
+            dur = 4
+        return self.__a[quality][dur] + self.__b[quality][dur] * x
+
+    def __set_price(self, stress, quality):
         if stress:
-            self.price = (yield_curve.af(maturity, 0, freq) * coupon + yield_curve.df(maturity)) * principal \
-                         * (1 - self.__stress(quality, self.modified_duration()))
+            return (self.yield_curve.af(self.maturity, 0, self.freq) * self.coupon +
+                    self.yield_curve.df(self.maturity)) * self.principal * \
+                   (1 - self.__stress(quality, self.modified_duration()))
         else:
             self.price = self.__price
 
@@ -428,24 +454,6 @@ class Bond(object):
 
     def modified_duration(self):
         return self.duration() / (1 + self.ytm() / self.freq)
-
-    def __stress(self, quality, duration):
-        if duration <= 5:
-            x = duration
-            dur = 0
-        elif 5 < duration <= 10:
-            x = duration - 5
-            dur = 1
-        elif 10 < duration <= 15:
-            x = duration - 10
-            dur = 2
-        elif 15 < duration <= 20:
-            x = duration - 15
-            dur = 3
-        else:
-            x = duration - 20
-            dur = 4
-        return self.__a[quality][dur] + self.__b[quality][dur] * x
 
 
 if __name__ == '__main__':
