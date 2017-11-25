@@ -13,7 +13,7 @@ class Scraper(object):
         # Start the WebDriver and load the page
         driver = webdriver.Chrome(self.path)
         driver.get(self.url)
-        time.sleep(2)
+        time.sleep(0.2)
 
         # Get the table
         driver.execute_script('javascript:charts[0].switchDimension(1,1);')
@@ -25,5 +25,5 @@ class Scraper(object):
         for i, row in enumerate(rows):
             if i != 0:
                 data = row.find_elements(By.TAG_NAME, "td")[1]
-                result.append(data.text)
+                result.append(float(data.text))
         return np.array(result)
