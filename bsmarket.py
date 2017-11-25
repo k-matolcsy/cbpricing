@@ -180,9 +180,9 @@ class UsTreasury(YieldCurve):
         # attributes
         self.data = quandl.get("USTREASURY/YIELD", start_date=date, end_date=date)  # get data from Quandl in DataFrame
         self.rates = self.data.values[0]        # get rates from data
-        self.tenors = self.__set_tenors()       # get tenors from data
+        self.tenors = self.__get_tenors()       # get tenors from data
 
-    def __set_tenors(self):
+    def __get_tenors(self):
         header = self.data.columns.values  # numpy n dim array
         result = np.empty(len(header), dtype=float)  # numpy n dim array
         for i, x in enumerate(header):
@@ -201,7 +201,7 @@ class EuroArea(YieldCurve):
 
         # attributes
         self.tenors = np.array([1 / 4, 1 / 2, 3 / 4] + [x for x in range(1, 31)])       # build tenors
-        self.rates = self.__set_rates(date)      # get rates from ECB web
+        self.rates = self.__get_rates(date)      # get rates from ECB web
         self.data = dict(zip(self.tenors, self.rates))   # build data
 
     @staticmethod
@@ -218,7 +218,7 @@ class EuroArea(YieldCurve):
                         result[tenor_checklist.index(name_search.group())] = rate_search.group()
         return result
 
-    def __set_rates(self, date):
+    def __get_rates(self, date):
         if date == str(dt.date.today()):
             return ecb.Scraper().data()
         else:
@@ -228,44 +228,18 @@ class EuroArea(YieldCurve):
 class Stock(object):
     __stress_1 = .39
     __stress_2 = .49
-
     # symmetric_adj()
 
     def __init__(self, ticker, start=str(dt.date.today() - rel_delta(years=1)), end=str(dt.date.today()), stress=None):
-        # get data from Yahoo finance
-        table = None
-        fail = True
-        attempt = 1
-        while fail:
-            try:
-                table = web.DataReader(ticker, 'yahoo', start, end)
-                fail = False
-            except Exception as e:
-                print(str(attempt), "attempt failed \t", str(e))
-        self.data = table['Adj Close']
-
-        # get price from data
-        if stress == "type1":
-            price = float(self.data.values[-1]) * (1 - self.__stress_1 - self.symmetric_adj())
-        elif stress == "type2":
-            price = float(self.data.values[-1]) * (1 - self.__stress_2 - self.symmetric_adj())
-        else:
-            price = float(self.data.values[-1])
-        self.price = price
+        # attributes
+        self.data = self.__get_data(ticker, start, end)       # get data from Yahoo finance
+        self.price = self.__get_price(stress)       # get price from data
 
     def __str__(self):
         return str(self.data)
 
-    def vol_hist(self, days=252):
-        n = min(days, len(self.data) - 1)
-        if n == len(self.data) - 1:
-            print("There is not enough data \n")
-            print("Historical volatility is calculated from" + str(n) + "observation instead of" + str(days))
-        returns = np.array([self.data.values[-x] / self.data.values[-x-1] - 1 for x in range(1, n+1)])
-        return np.std(returns) * 252 ** 0.5
-
     @staticmethod
-    def symmetric_adj():
+    def __symmetric_adj():
         start = dt.date.today() - rel_delta(days=37)
         end = dt.date.today() - rel_delta(days=1)
         tickers = np.array(
@@ -294,6 +268,35 @@ class Stock(object):
         # calculate symmetric adjustment
         symmetric_adj = 0.5 * ((ci - ai) / ai - .08)
         return max(-.1, min(symmetric_adj, .1))
+
+    @staticmethod
+    def __get_data(ticker, start, end):
+        table = None
+        fail = True
+        attempt = 1
+        while fail:
+            try:
+                table = web.DataReader(ticker, 'yahoo', start, end)
+                fail = False
+            except Exception as e:
+                print(str(attempt), "attempt failed \t", str(e))
+        return table['Adj Close']
+
+    def __get_price(self, stress):
+        if stress == "type1":
+            return float(self.data.values[-1]) * (1 - self.__stress_1 - self.__symmetric_adj())
+        elif stress == "type2":
+            return float(self.data.values[-1]) * (1 - self.__stress_2 - self.__symmetric_adj())
+        else:
+            return float(self.data.values[-1])
+
+    def vol_hist(self, days=252):
+        n = min(days, len(self.data) - 1)
+        if n == len(self.data) - 1:
+            print("There is not enough data \n")
+            print("Historical volatility is calculated from" + str(n) + "observation instead of" + str(days))
+        returns = np.array([self.data.values[-x] / self.data.values[-x-1] - 1 for x in range(1, n+1)])
+        return np.std(returns) * 252 ** 0.5
 
 
 class Option(object):
