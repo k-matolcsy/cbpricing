@@ -290,42 +290,55 @@ class Stock(object):
 
 
 class Option(object):
-    def __init__(self, ticker, strike=100, expiry='18-01-19', option='call'):
-        self.ticker = ticker
-        self.strike = strike
-        self.expiry = expiry
-        self.option_type = option
 
-        self.table = web.Options(ticker, "yahoo").get_all_data()
-        self.data = self.table['Last']
-        self.price = float(self.data[strike, str(expiry), str(option)])
-        self.maturity = (dt.datetime.strptime(self.expiry, "%y-%m-%d") - dt.datetime.today()) / dt.timedelta(days=365)
-        self.expiry_dates = web.Options(ticker, "yahoo").expiry_dates
-
+    def __init__(self, ticker, option_type='call', expiry=None, strike=None):
+        # objects
+        self.yield_curve = EuroArea()
         self.stock = Stock(ticker)
-        self.yield_curve = EuroArea(str(dt.date.today()))
+        self.option = web.Options(ticker, "yahoo")
+
+        # save inputs
+        self.ticker = ticker
+        self.option_type = option_type
+        self.expiry = self.__set_expiry(expiry)     # expiry correction
+        table = self.option.get_all_data().xs((self.expiry, self.option_type), level=('Expiry', 'Type'),
+                                              drop_level=True)
+        self.strike = self.__set_strike(strike, table)      # strike correction
+
+        # attributes
+        self.data = table['Last']
+        self.price = float(self.data[self.strike])
+        self.maturity = (dt.datetime.strptime(self.expiry, "%y-%m-%d") - dt.datetime.today()) / dt.timedelta(days=365)
 
     def __str__(self):
         return str(self.data)
 
-    def __bs_diff(self, volatility):
-        stock = self.stock.price
-        strike = self.strike
-        maturity = self.maturity
-        r = math.ln(1 + self.yield_curve.spot(maturity))
-        df = self.yield_curve.df(maturity)
+    def __set_expiry(self, expiry):
+        if expiry is None or dt.datetime.strptime(expiry[2:], "%y-%m-%d").date() > self.option.expiry_dates[-1]:
+            return self.option.expiry_dates[-1].strftime('%d-%m-%y')
+        else:
+            for date in self.option.expiry_dates:
+                if dt.datetime.strptime(expiry[2:], "%y-%m-%d").date() < date:
+                    return date.strftime('%d-%m-%y')
 
-        d1 = (math.ln(stock / strike) + (r + volatility ** 2 / 2) * maturity) / (volatility * maturity ** 0.5)
-        d2 = d1 - volatility * maturity ** 0.5
-        return stock * norm.cdf(d1) - strike * df * norm.cdf(d2) - self.price
+    def __set_strike(self, strike, table):
+        if strike is None:
+            strike = self.stock.price
+        for x, y in table.index.values:
+            if strike <= x:
+                return x
+
+    def __bs_diff(self, volatility):
+        r = math.ln(1 + self.yield_curve.spot(self.maturity))
+        df = self.yield_curve.df(self.maturity)
+        d1 = (math.ln(self.stock.price / self.strike) + (r + volatility ** 2 / 2) * self.maturity) / (volatility * self.maturity ** 0.5)
+        d2 = d1 - volatility * self.maturity ** 0.5
+        return self.stock.price * norm.cdf(d1) - self.strike * df * norm.cdf(d2) - self.price
 
     def __vega(self, volatility):
-        stock = self.stock.price
-        strike = self.strike
-        maturity = self.maturity
-        r = math.ln(1 + self.yield_curve.spot(maturity))
-        d1 = (math.ln(stock / strike) + (r + volatility ** 2 / 2) * maturity) / (volatility * maturity ** 0.5)
-        return stock * norm.pdf(d1) * maturity ** 0.5
+        r = math.ln(1 + self.yield_curve.spot(self.maturity))
+        d1 = (math.ln(self.stock.price / self.strike) + (r + volatility ** 2 / 2) * self.maturity) / (volatility * self.maturity ** 0.5)
+        return self.stock.price * norm.pdf(d1) * self.maturity ** 0.5
 
     def vol_implied(self, epsilon=0.0001):
         guess = self.stock.vol_hist()
@@ -360,12 +373,13 @@ class Bond(object):
         self.coupon = coupon    # coupon rate
         self.freq = freq        # number of coupon payments in a year
         self.yield_curve = yield_curve
-
+        # calculating the price
+        self.__price = (yield_curve.af(maturity, 0, freq) * coupon + yield_curve.df(maturity)) * principal
         if stress:
             self.price = (yield_curve.af(maturity, 0, freq) * coupon + yield_curve.df(maturity)) * principal \
                          * (1 - self.__stress(quality, self.modified_duration()))
         else:
-            self.price = (yield_curve.af(maturity, 0, freq) * coupon + yield_curve.df(maturity)) * principal
+            self.price = self.__price
 
     @staticmethod
     def __my_range(end, start, step):
@@ -379,7 +393,7 @@ class Bond(object):
         s = self.principal / (1 + ytm) ** self.maturity
         for t in self.__my_range(self.maturity, 0, self.freq):
             s += self.coupon * self.principal / (1 + ytm) ** t
-        return s - self.price
+        return s - self.__price
 
     def __ytm_derivative(self, ytm):
         s = - self.principal * self.maturity * (1 + ytm) ** (- self.maturity - 1)
@@ -388,8 +402,8 @@ class Bond(object):
         return s
 
     def ytm(self, epsilon=0.001):
-        guess = (self.coupon * self.principal + (self.principal - self.price) / int(self.maturity / self.freq)) / \
-                ((self.principal + self.price) / 2)
+        guess = (self.coupon * self.principal + (self.principal - self.__price) / int(self.maturity / self.freq)) / \
+                ((self.principal + self.__price) / 2)
         delta = abs(0 - self.__ytm_diff(guess))
         while delta > epsilon:
             guess -= self.__ytm_diff(guess) / self.__ytm_derivative(guess)
@@ -400,7 +414,7 @@ class Bond(object):
         s = self.maturity * self.principal * self.yield_curve.df(self.maturity)
         for t in self.__my_range(self.maturity, 0, self.freq):
             s += t * self.coupon * self.yield_curve.df(t)
-        return s / self.price
+        return s / self.__price
 
     def modified_duration(self):
         return self.duration() / (1 + self.ytm() / self.freq)
@@ -425,4 +439,13 @@ class Bond(object):
 
 
 if __name__ == '__main__':
-    my_yield_curve = EuroArea()
+    # my_yield_curve = EuroArea(spread=.01)
+    # my_yield_curve.show()
+
+    # my_bond = Bond(1000, 1, .05, 1, EuroArea(spread=0.00770672), stress=False)
+    # print(my_bond.price)
+    # print(my_bond.ytm())
+    # print(my_bond.modified_duration())
+
+    apple = Option("AAPL", strike=174, expiry='2019-10-22')
+    print(apple.price)
