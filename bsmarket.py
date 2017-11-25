@@ -26,12 +26,17 @@ class YieldCurve(object):
     __stress_tenors = np.array([x for x in range(21)] + [90])
 
     def __init__(self, date, stress, spread):
+        # input check
         if spread != .0 and stress is not None:
             print("""YieldCurve() cannot handle stress and spread simultaneously""")
             raise Exception
+
+        # save inputs
         self.date = date
         self.spread = spread
         self.stress = stress
+
+        # attributes
         self.tenors = None  # [1 / 12, 1 / 4, 1 / 2, 1, 2, 3, 5., 7, 10, 20, 30]
         self.rates = None  # [0.96, 1.02, 1.1, 1.24, 1.35, 1.46, 1.73, 1.99, 2.16, 2.51, 2.77]
         self.data = None
@@ -169,39 +174,35 @@ class UsTreasury(YieldCurve):
     spread is not implemented
     """
     def __init__(self, date=str(dt.date.today()), stress=None):
+        # pass inputs to parent
         super().__init__(date, stress, spread=.0)
-        # get data from Quandl
-        self.data = quandl.get("USTREASURY/YIELD", start_date=date, end_date=date)  # pandas DataFrame
-        # get rates from data
-        self.rates = self.data.values[0]
-        # get tenors from data
+
+        # attributes
+        self.data = quandl.get("USTREASURY/YIELD", start_date=date, end_date=date)  # get data from Quandl in DataFrame
+        self.rates = self.data.values[0]        # get rates from data
+        self.tenors = self.__set_tenors()       # get tenors from data
+
+    def __set_tenors(self):
         header = self.data.columns.values  # numpy n dim array
-        self.tenors = np.empty(len(header), dtype=float)  # numpy n dim array
+        result = np.empty(len(header), dtype=float)  # numpy n dim array
         for i, x in enumerate(header):
             # everything but the last three characters
-            self.tenors[i] = float(x[:-3])
+            result[i] = float(x[:-3])
             # last two characters
             if x[-2:] == "MO":
-                self.tenors[i] /= 12
+                result[i] /= 12
+        return result
 
 
 class EuroArea(YieldCurve):
     def __init__(self, date=str(dt.date.today()), stress=None, spread=.0):
+        # pass inputs to parent
         super().__init__(date, stress, spread)
-        # build tenors
-        self.tenors = np.array([1 / 4, 1 / 2, 3 / 4] + [x for x in range(1, 31)])
-        # get rates from ECB web
-        if date == str(dt.date.today()):
-            self.rates = ecb.Scraper().data()
-            print("""
-            Euro area yield curve from website of ECB \n
-            """)
-            for tenor, rate in zip(self.tenors, self.rates):
-                print("\t", tenor, "\t\t", rate)
-        else:
-            self.rates = self.__local_parser(date)
-        # build data
-        self.data = dict(zip(self.tenors, self.rates))
+
+        # attributes
+        self.tenors = np.array([1 / 4, 1 / 2, 3 / 4] + [x for x in range(1, 31)])       # build tenors
+        self.rates = self.__set_rates(date)      # get rates from ECB web
+        self.data = dict(zip(self.tenors, self.rates))   # build data
 
     @staticmethod
     def __local_parser(date):
@@ -216,6 +217,12 @@ class EuroArea(YieldCurve):
                         rate_search = re.search('[-]?[0-9]+[.][0-9]{4}', line)
                         result[tenor_checklist.index(name_search.group())] = rate_search.group()
         return result
+
+    def __set_rates(self, date):
+        if date == str(dt.date.today()):
+            return ecb.Scraper().data()
+        else:
+            return self.__local_parser(date)
 
 
 class Stock(object):
