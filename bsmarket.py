@@ -318,7 +318,7 @@ class Option(object):
         # attributes
         self.data = table['Last']
         self.price = float(self.data[self.strike])
-        self.maturity = (dt.datetime.strptime(self.expiry, "%y-%m-%d") - dt.datetime.today()) / dt.timedelta(days=365)
+        self.maturity = (dt.datetime.strptime(self.expiry, "%d-%m-%y") - dt.datetime.today()) / dt.timedelta(days=365)
 
     def __str__(self):
         return str(self.data)
@@ -339,23 +339,28 @@ class Option(object):
                 return x
 
     def __bs_diff(self, volatility):
-        r = math.ln(1 + self.yield_curve.spot(self.maturity))
+        r = math.log(1 + self.yield_curve.spot(self.maturity))
         df = self.yield_curve.df(self.maturity)
-        d1 = (math.ln(self.stock.price / self.strike) + (r + volatility ** 2 / 2) * self.maturity) / (volatility * self.maturity ** 0.5)
+        d1 = (math.log(self.stock.price / self.strike) + (r + volatility ** 2 / 2) * self.maturity) / (volatility * self.maturity ** 0.5)
         d2 = d1 - volatility * self.maturity ** 0.5
         return self.stock.price * norm.cdf(d1) - self.strike * df * norm.cdf(d2) - self.price
 
     def __vega(self, volatility):
-        r = math.ln(1 + self.yield_curve.spot(self.maturity))
-        d1 = (math.ln(self.stock.price / self.strike) + (r + volatility ** 2 / 2) * self.maturity) / (volatility * self.maturity ** 0.5)
+        r = math.log(1 + self.yield_curve.spot(self.maturity))
+        d1 = (math.log(self.stock.price / self.strike) + (r + volatility ** 2 / 2) * self.maturity) / (volatility * self.maturity ** 0.5)
         return self.stock.price * norm.pdf(d1) * self.maturity ** 0.5
 
     def vol_implied(self, epsilon=0.0001):
         guess = self.stock.vol_hist()
+        print("guess: " + str(guess))
         delta = abs(0 - self.__bs_diff(guess))
+        print("delta: " + str(delta))
         while delta > epsilon:
             guess -= self.__bs_diff(guess) / self.__vega(guess)
+            print("guess: " + str(guess))
             delta = abs(0 - self.__bs_diff(guess))
+            print("delta: " + str(delta))
+        print(self.expiry, self.maturity, self.strike, self.price)
         return guess
 
 
@@ -465,5 +470,6 @@ if __name__ == '__main__':
     # print(my_bond.ytm())
     # print(my_bond.modified_duration())
 
-    apple = Option("AAPL", strike=174, expiry='2019-10-22')
-    print(apple.price)
+    apple = Option("AAPL", strike=174, expiry='2021-10-22')
+    print(apple.maturity)
+    print("vol: " + str(apple.vol_implied()))
