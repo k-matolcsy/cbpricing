@@ -234,6 +234,7 @@ class Stock(object):
         # attributes
         self.data = self.__get_data(ticker, start, end)       # get data from Yahoo finance
         self.price = self.__get_price(stress)       # get price from data
+        self.vol_hist = self.__vol_hist(days=250)
 
     def __str__(self):
         return str(self.data)
@@ -290,11 +291,11 @@ class Stock(object):
         else:
             return float(self.data.values[-1])
 
-    def vol_hist(self, days=252):
+    def __vol_hist(self, days):
         n = min(days, len(self.data) - 1)
         if n == len(self.data) - 1:
             print("There is not enough data \n")
-            print("Historical volatility is calculated from" + str(n) + "observation instead of" + str(days))
+            print("Historical volatility is calculated from " + str(n) + " observation instead of " + str(days))
         returns = np.array([self.data.values[-x] / self.data.values[-x-1] - 1 for x in range(1, n+1)])
         return np.std(returns) * 252 ** 0.5
 
@@ -351,16 +352,11 @@ class Option(object):
         return self.stock.price * norm.pdf(d1) * self.maturity ** 0.5
 
     def vol_implied(self, epsilon=0.0001):
-        guess = self.stock.vol_hist()
-        print("guess: " + str(guess))
+        guess = self.stock.vol_hist
         delta = abs(0 - self.__bs_diff(guess))
-        print("delta: " + str(delta))
         while delta > epsilon:
             guess -= self.__bs_diff(guess) / self.__vega(guess)
-            print("guess: " + str(guess))
             delta = abs(0 - self.__bs_diff(guess))
-            print("delta: " + str(delta))
-        print(self.expiry, self.maturity, self.strike, self.price)
         return guess
 
 
