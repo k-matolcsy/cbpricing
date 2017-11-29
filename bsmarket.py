@@ -134,10 +134,10 @@ class YieldCurve(object):
             return self.__spot(maturity)
 
     def forward(self, closer, further):
-        return ((1 + self.spot(further)) ** further / (1 + self.spot(closer)) ** closer) ** (1 / (further - closer)) - 1
+        return (self.spot(further) * further - self.spot(closer) * closer) / (further - closer)
 
     def df(self, maturity, base=0):
-        return 1 / (1 + self.forward(base, maturity)) ** (maturity - base)
+        return np.exp(-self.forward(base, maturity) * (maturity - base))
 
     def af(self, maturity, base=0, freq=1):
         def my_range(end, start, step):
@@ -295,7 +295,7 @@ class Stock(object):
         if n == len(self.data) - 1:
             print("There is not enough data \n")
             print("Historical volatility is calculated from " + str(n) + " observation instead of " + str(days))
-        returns = np.array([self.data.values[-x] / self.data.values[-x-1] - 1 for x in range(1, n+1)])
+        returns = np.array([np.log(self.data.values[-x] / self.data.values[-x-1]) for x in range(1, n+1)])
         return np.std(returns) * 252 ** 0.5
 
 
@@ -339,7 +339,7 @@ class Option(object):
                 return x
 
     def __bs_diff(self, volatility):
-        r = np.log(1 + self.yield_curve.spot(self.maturity))
+        r = self.yield_curve.spot(self.maturity)
         df = self.yield_curve.df(self.maturity)
         d1 = (np.log(self.stock.price / self.strike) + (r + volatility ** 2 / 2) * self.maturity) / \
              (volatility * self.maturity ** 0.5)
@@ -347,7 +347,7 @@ class Option(object):
         return self.stock.price * norm.cdf(d1) - self.strike * df * norm.cdf(d2) - self.price
 
     def __vega(self, volatility):
-        r = np.log(1 + self.yield_curve.spot(self.maturity))
+        r = self.yield_curve.spot(self.maturity)
         d1 = (np.log(self.stock.price / self.strike) + (r + volatility ** 2 / 2) * self.maturity) / \
              (volatility * self.maturity ** 0.5)
         return self.stock.price * norm.pdf(d1) * self.maturity ** 0.5

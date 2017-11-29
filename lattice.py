@@ -147,7 +147,7 @@ class ConvertibleTree(BinomialTree):
 
     def __prob(self, step):
         f = self.yc.forward(step * self.dt, (step + 1) * self.dt)
-        return ((1 + f - self.div_cont) ** self.dt - self.down) / (self.up - self.down)
+        return (np.exp(f * self.dt) - self.down) / (self.up - self.down)
 
     def __coupon(self, step):
         if step * self.dt % self.coupon_freq == 0:
