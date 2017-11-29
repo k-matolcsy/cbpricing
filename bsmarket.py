@@ -1,6 +1,5 @@
 from dateutil.relativedelta import relativedelta as rel_delta
 import datetime as dt
-import math
 import numpy as np
 from scipy.stats import norm
 import pandas_datareader.data as web
@@ -340,15 +339,17 @@ class Option(object):
                 return x
 
     def __bs_diff(self, volatility):
-        r = math.log(1 + self.yield_curve.spot(self.maturity))
+        r = np.log(1 + self.yield_curve.spot(self.maturity))
         df = self.yield_curve.df(self.maturity)
-        d1 = (math.log(self.stock.price / self.strike) + (r + volatility ** 2 / 2) * self.maturity) / (volatility * self.maturity ** 0.5)
+        d1 = (np.log(self.stock.price / self.strike) + (r + volatility ** 2 / 2) * self.maturity) / \
+             (volatility * self.maturity ** 0.5)
         d2 = d1 - volatility * self.maturity ** 0.5
         return self.stock.price * norm.cdf(d1) - self.strike * df * norm.cdf(d2) - self.price
 
     def __vega(self, volatility):
-        r = math.log(1 + self.yield_curve.spot(self.maturity))
-        d1 = (math.log(self.stock.price / self.strike) + (r + volatility ** 2 / 2) * self.maturity) / (volatility * self.maturity ** 0.5)
+        r = np.log(1 + self.yield_curve.spot(self.maturity))
+        d1 = (np.log(self.stock.price / self.strike) + (r + volatility ** 2 / 2) * self.maturity) / \
+             (volatility * self.maturity ** 0.5)
         return self.stock.price * norm.pdf(d1) * self.maturity ** 0.5
 
     def vol_implied(self, epsilon=0.0001):
