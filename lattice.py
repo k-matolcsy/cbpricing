@@ -84,7 +84,7 @@ class CRRTree(BinomialTree):
 
 class ConvertibleTree(BinomialTree):
 
-    def __init__(self, principal, maturity, coupon, coupon_freq, steps, ticker, con_ratio):
+    def __init__(self, principal, maturity, coupon, coupon_freq, spread, steps, ticker, con_ratio, call):
         super().__init__(steps)
 
         # save inputs
@@ -96,7 +96,7 @@ class ConvertibleTree(BinomialTree):
         self.ticker = ticker
         self.cr = con_ratio
         # call provision
-        self.call = 1100
+        self.call = call
         # dilution
         self.stock_out = 168.07     # million
         self.cb_out = 1.2  # million
@@ -106,7 +106,7 @@ class ConvertibleTree(BinomialTree):
         self.div_disc = 0.03
         self.div_freq = 0.5
         # credit risk
-        self.spread = 0.01
+        self.spread = spread
 
         # objects
         expiry = str(dt.datetime.today() + dt.timedelta(days=365*maturity))[:10]
@@ -213,7 +213,15 @@ class ConvertibleTree(BinomialTree):
 
 
 if __name__ == "__main__":
-    apple = ConvertibleTree(1000, 2, .02, 1, 8, "AAPL", 5)
+    apple = ConvertibleTree(principal=1000,
+                            maturity=2,
+                            coupon=.02,
+                            coupon_freq=1,
+                            spread=0.01,
+                            steps=8,
+                            ticker="AAPL",
+                            con_ratio=5,
+                            call=1100)
     print(apple.tree)
     # pear = CRRTree(4, "AAPL", "call", 1, 200)
     # print(pear.tree[0])
