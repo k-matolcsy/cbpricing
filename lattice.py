@@ -1,6 +1,7 @@
 import datetime as dt
 import numpy as np
-from bsmarket import Option
+from bsmarket import EuroArea, Option
+from scipy.misc import factorial as fact
 
 
 class BinomialTree(object):
@@ -29,7 +30,7 @@ class CRRTree(BinomialTree):
         expiry = str(dt.datetime.today() + dt.timedelta(days=365*maturity))[:10]
         self.option = Option(ticker, option_type, expiry, strike)
         self.stock = self.option.stock
-        self.yc = self.option.yield_curve
+        self.risk_free = self.option.yield_curve
 
         # set parameters
         self.volatility = max(self.stock.vol_hist, self.option.vol_implied())
@@ -68,7 +69,7 @@ class CRRTree(BinomialTree):
             raise Exception
 
     def __prob(self, step):
-        f = self.yc.forward(step * self.dt, (step + 1) * self.dt)
+        f = self.risk_free.forward(step * self.dt, (step + 1) * self.dt)
         return ((1 + f) ** self.dt - self.down) / (self.up - self.down)
 
     def __build_derivative(self):
@@ -76,7 +77,7 @@ class CRRTree(BinomialTree):
             self.tree[-1][i] = (self.tree[-1][i], self.__payoff_function(self.tree[-1][i]))
         for j in reversed(range(self.size-1)):
             p = self.__prob(j)
-            df = self.yc.df((j+1)*self.dt, j*self.dt)
+            df = self.risk_free.df((j+1)*self.dt, j*self.dt)
             for i in range(j+1):
                 self.tree[j][i] = (self.tree[j][i], df * (p * self.tree[j+1][i][1] + (1-p) * self.tree[j+1][i+1][1]))
 
@@ -102,15 +103,18 @@ class ConvertibleTree(BinomialTree):
         # continuous dividend
         self.div_cont = 0.00
         # discrete dividend
-        self.div_disc = 0.00
-        self.div_freq = 2
+        self.div_disc = 0.03
+        self.div_freq = 0.5
+        # credit risk
+        self.spread = 0.01
 
         # objects
         expiry = str(dt.datetime.today() + dt.timedelta(days=365*maturity))[:10]
         strike = self.principal / self.cr       # conversion price?
         self.option = Option(ticker, 'call', expiry, strike)
         self.stock = self.option.stock
-        self.yc = self.option.yield_curve
+        self.risk_free = self.option.yield_curve
+        self.risky = EuroArea(spread=self.spread)
 
         # set parameters
         self.volatility = max(self.stock.vol_hist, self.option.vol_implied())
@@ -146,11 +150,12 @@ class ConvertibleTree(BinomialTree):
         return max(self.principal, self.cr * stock_at_con) + self.coupon * self.principal
 
     def __prob(self, step):
-        f = self.yc.forward(step * self.dt, (step + 1) * self.dt)
+        f = self.risk_free.forward(step * self.dt, (step + 1) * self.dt)
+        print(f)
         return (np.exp(f * self.dt) - self.down) / (self.up - self.down)
 
     def __coupon(self, step):
-        if step * self.dt % self.coupon_freq == 0:
+        if step != 0 and step * self.dt % self.coupon_freq == 0:
             return self.coupon * self.principal
         else:
             return 0
@@ -161,24 +166,54 @@ class ConvertibleTree(BinomialTree):
         else:
             return 0
 
+    @staticmethod
+    def __roll_dist(distribution, p):
+        distribution.append(0)
+        result = []
+        for i in range(len(distribution)):
+            result.append(p * distribution[i] + (1 - p) * distribution[i - 1])
+        return result
+
+    # risk adjusted fin forward
+    def __raf_forward(self, step, node, runner):
+        stock_at_con = (self.stock_out * self.tree[-1][node+runner][0] + self.cb_out * self.principal) / \
+                       (self.stock_out + self.cb_out * self.cr)
+        if stock_at_con * self.cr > self.principal:
+            return self.risk_free.forward(step * self.dt, (step + 1) * self.dt)
+        else:
+            return self.risky.forward(step * self.dt, (step + 1) * self.dt)
+
+    def __risk_adj_df(self, step, node, distribution):
+        f = 0
+        n = self.size - step
+        for k in range(n):
+            f += distribution[k] * self.__raf_forward(step, node, k)
+        print(f)
+        return np.exp(-f * self.dt)
+
     def __build_derivative(self):
         for i in range(self.size):
             self.tree[-1][i] = (self.tree[-1][i], self.__payoff_function(self.tree[-1][i]))
+        distribution = [1]
         for j in reversed(range(self.size-1)):
             c = self.__coupon(j)
             p = self.__prob(j)
-            df = self.yc.df((j + 1) * self.dt, j * self.dt)
+            print(p)
+            distribution = self.__roll_dist(distribution, p)
+            print(distribution)
+            df = self.risk_free.df((j + 1) * self.dt, j * self.dt)
             print(j*self.dt, c)
             for i in range(j+1):
-                rolling = df * (p * self.tree[j+1][i][1] + (1-p) * self.tree[j+1][i+1][1]) + c
+                adf = self.__risk_adj_df(j, i, distribution)
+                rolling = adf * (p * self.tree[j+1][i][1] + (1-p) * self.tree[j+1][i+1][1])
                 stock_at_con = (self.stock_out * self.tree[j][i] + self.cb_out * self.principal) / \
                                (self.stock_out + self.cb_out * self.cr)
-                self.tree[j][i] = (self.tree[j][i], max(min(self.call, rolling), self.cr * stock_at_con))
+                self.tree[j][i] = (self.tree[j][i], max(min(self.call, rolling), self.cr * stock_at_con) + c)
         return None
 
 
 if __name__ == "__main__":
-    apple = ConvertibleTree(1000, 1, .0, .5, 4, "AAPL", 5)
+    apple = ConvertibleTree(1000, 2, .02, 1, 8, "AAPL", 5)
     print(apple.tree)
     # pear = CRRTree(4, "AAPL", "call", 1, 200)
     # print(pear.tree[0])
