@@ -1,7 +1,6 @@
 import datetime as dt
 import numpy as np
 from bsmarket import EuroArea, Option
-from scipy.misc import factorial as fact
 
 
 class BinomialTree(object):
@@ -201,7 +200,7 @@ class ConvertibleTree(BinomialTree):
             print(p)
             distribution = self.__roll_dist(distribution, p)
             print(distribution)
-            df = self.risk_free.df((j + 1) * self.dt, j * self.dt)
+            # df = self.risk_free.df((j + 1) * self.dt, j * self.dt)
             print(j*self.dt, c)
             for i in range(j+1):
                 adf = self.__risk_adj_df(j, i, distribution)

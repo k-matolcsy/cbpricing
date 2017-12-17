@@ -368,7 +368,8 @@ class Bond(object):
         np.array([.0, .07, .105, .13, .155]),
         np.array([.0, .125, .2, .25, .3]),
         np.array([.0, .225, .35, .44, .465]),
-        np.array([.0, .375, .585, .61, .635])
+        np.array([.0, .375, .585, .61, .635]),
+        np.array([.0, .15, .235, .235, .355])
     ])
     __b = np.array([
         np.array([.009, .005, .005, .005, .005]),
@@ -376,10 +377,10 @@ class Bond(object):
         np.array([.014, .007, .005, .005, .005]),
         np.array([.025, .015, .01, .01, .005]),
         np.array([.045, .025, .018, .005, .005]),
-        np.array([.075, .042, .005, .005, .005]),
+        np.array([.03, .017, .012, .012, .005]),
     ])
 
-    def __init__(self, principal, maturity, coupon, freq, yield_curve, stress=False, quality=0):
+    def __init__(self, principal, maturity, coupon, freq, yield_curve, stress=False, quality=None):
         # save inputs
         self.principal = principal
         self.maturity = maturity
@@ -394,22 +395,18 @@ class Bond(object):
         self.price = self.__set_price(stress, quality)
 
     def __stress(self, quality, duration):
-        if duration <= 5:
-            x = duration
-            dur = 0
-        elif 5 < duration <= 10:
-            x = duration - 5
-            dur = 1
-        elif 10 < duration <= 15:
-            x = duration - 10
-            dur = 2
-        elif 15 < duration <= 20:
-            x = duration - 15
-            dur = 3
-        else:
-            x = duration - 20
-            dur = 4
-        return self.__a[quality][dur] + self.__b[quality][dur] * x
+        if quality is None:
+            quality = 6
+        quality_idx = quality
+        duration_idx = 4
+        x = duration - 20
+        for i in range(0, 4):
+            low = i * 5
+            high = low + 5
+            if low < duration <= high:
+                duration_idx = i
+                x = duration - low
+        return self.__a[quality_idx][duration_idx] + self.__b[quality_idx][duration_idx] * x
 
     def __set_price(self, stress, quality):
         if stress:
